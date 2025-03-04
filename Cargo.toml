@@ -1,10 +1,12 @@
 [workspace]
 exclude = [
   "arm-targets",
+  "examples/versatileab",
+  "examples/mps3-an536",
 ]
 members = [
   "cortex-ar",
-  "cortex-r-examples",
   "cortex-r-rt",
+  "cortex-a-rt",
 ]
 resolver = "2"

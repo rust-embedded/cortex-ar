@@ -39,3 +39,11 @@ pub fn wfe() {
         core::arch::asm!("wfe");
     }
 }
+
+/// Emit an SEV instruction
+#[inline]
+pub fn sev() {
+    unsafe {
+        core::arch::asm!("sev");
+    }
+}

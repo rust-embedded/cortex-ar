@@ -1,4 +1,5 @@
-//! Code that implements the `critical-section` traits on Cortex-R.
+//! Code that implements the `critical-section` traits on Cortex-R or Cortex-A when only a single
+//! core is used.
 //!
 //! Only valid if you have a single core.
 

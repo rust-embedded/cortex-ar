@@ -1,4 +1,4 @@
-//! # Build script for the Cortex-R Examples
+//! # Build script for the Cortex-A Runtime
 //!
 //! This script only executes when using `cargo` to build the project.
 //!
@@ -8,17 +8,7 @@ use std::io::Write;
 
 fn main() {
     arm_targets::process();
-
-    match std::env::var("TARGET").expect("TARGET not set").as_str() {
-        "armv8r-none-eabihf" => {
-            write("memory.x", include_bytes!("mps3-an536.ld"));
-        }
-        _ => {
-            write("memory.x", include_bytes!("versatileab.ld"));
-        }
-    }
-    // Use the cortex-m-rt linker script
-    println!("cargo:rustc-link-arg=-Tlink.x");
+    write("link.x", include_bytes!("link.x"));
 }
 
 fn write(file: &str, contents: &[u8]) {

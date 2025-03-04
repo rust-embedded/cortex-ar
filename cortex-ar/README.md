@@ -1,4 +1,4 @@
-# Support for Arm Cortex-R (AArch32) and Arm Corex-A (AArch32)
+# Support for Arm Cortex-R (AArch32) and Arm Cortex-A (AArch32)
 
 This crate provides access to CPU registers and common peripherals for:
 

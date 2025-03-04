@@ -1,7 +1,17 @@
-//! Run-time support for Arm Cortex-R
+//! Run-time support for Arm Cortex-A
 //!
 //! This library implements a simple Arm vector table, suitable for getting into
-//! a Rust application running in System Mode.
+//! a Rust application running in System Mode. It also provides a reference start up method.
+//! Usually, most Cortex-A based systems will require chip specific start-up code, so the
+//! start-up method can over overriden.
+//!
+//! ## Features
+//!
+//! - `vfp-dp`: Enables support for the double-precision VFP floating point support. If your target
+//!    CPU has this feature or support for NEON which also implies double-precision support, this
+//!    feature should be activated.
+//!
+//! ## Information about the Run-Time
 //!
 //! Transferring from System Mode to User Mode (i.e. implementing an RTOS) is
 //! not handled here.
@@ -13,7 +23,9 @@
 //! We assume the following global symbols exist:
 //!
 //! * `__start` - a Reset handler. Our linker script PROVIDEs a default function
-//!   at `_default_start` but you can override it.
+//!   at `_default_start` but you can override it. Most Cortex-A SoCs require
+//!   a chip specific startup for tasks like MMU initialization or chip specific
+//!   initialization routines.
 //! * `_stack_top` - the address of the top of some region of RAM that we can
 //!   use as stack space, with eight-byte alignment. Our linker script PROVIDEs
 //!   a default pointing at the top of RAM.
@@ -41,7 +53,8 @@
 //! * `_asm_abort_handler` - a naked function to call when an Abort Exception
 //!   occurs. Our linker script PROVIDEs a default function at
 //!   `_asm_default_handler` but you can override it.
-//! * `kmain` - the `extern "C"` entry point to your application.
+//! * `boot_core` - the `extern "C"` entry point to your application. The CPU ID
+//!   will be passed as the first argument to this fumction.
 //! * `__sdata` - the start of initialised data in RAM. Must be 4-byte aligned.
 //! * `__edata` - the end of initialised data in RAM. Must be 4-byte aligned.
 //! * `__sidata` - the start of the initialisation values for data, in read-only
@@ -59,7 +72,7 @@
 //!
 //! * `_vector_table` - the start of the interrupt vector table
 //! * `_default_start` - the default Reset handler, that sets up some stacks and
-//!   calls an `extern "C"` function called `kmain`.
+//!   calls an `extern "C"` function called `boot_core`.
 //! * `_asm_default_fiq_handler` - an FIQ handler that just spins
 //! * `_asm_default_handler` - an exception handler that just spins
 //! * `_asm_svc_handler` - assembly language trampoline for SVC Exceptions that
@@ -86,9 +99,6 @@
 #![no_std]
 
 use cortex_ar::register::{cpsr::ProcessorMode, Cpsr};
-
-#[cfg(arm_architecture = "v8-r")]
-use cortex_ar::register::Hactlr;
 
 /// Our default exception handler.
 ///
@@ -179,7 +189,10 @@ macro_rules! restore_context {
 /// handler.
 ///
 /// It should match `restore_context!`.
-#[cfg(any(target_abi = "eabihf", feature = "eabi-fpu"))]
+#[cfg(all(
+    any(target_abi = "eabihf", feature = "eabi-fpu"),
+    not(feature = "vfp-dp")
+))]
 macro_rules! save_context {
     () => {
         r#"
@@ -204,7 +217,10 @@ macro_rules! save_context {
 /// handler.
 ///
 /// It should match `save_context!`.
-#[cfg(any(target_abi = "eabihf", feature = "eabi-fpu"))]
+#[cfg(all(
+    any(target_abi = "eabihf", feature = "eabi-fpu"),
+    not(feature = "vfp-dp")
+))]
 macro_rules! restore_context {
     () => {
         r#"
@@ -223,12 +239,60 @@ macro_rules! restore_context {
     };
 }
 
+/// This macro expands to code for saving context on entry to an exception
+/// handler.
+///
+/// It should match `restore_context!`.
+#[cfg(all(any(target_abi = "eabihf", feature = "eabi-fpu"), feature = "vfp-dp"))]
+macro_rules! save_context {
+    () => {
+        r#"
+        // save preserved registers (and gives us some working area)
+        push    {{r0-r3}}
+        // save FPU context
+        vpush   {{d0-d7}}
+        vpush   {{d16-d31}}
+        vmrs    r0, FPSCR
+        vmrs    r1, FPEXC
+        push    {{r0-r1}}
+        // align SP down to eight byte boundary
+        mov     r0, sp
+        and     r0, r0, 7
+        sub     sp, r0
+        // push alignment amount, and final preserved register
+        push    {{r0, r12}}
+        "#
+    };
+}
+
+/// This macro expands to code for restoring context on exit from an exception
+/// handler.
+///
+/// It should match `save_context!`.
+#[cfg(all(any(target_abi = "eabihf", feature = "eabi-fpu"), feature = "vfp-dp"))]
+macro_rules! restore_context {
+    () => {
+        r#"
+        // restore alignment amount, and preserved register
+        pop     {{r0, r12}}
+        // restore pre-alignment SP
+        add     sp, r0
+        // pop FPU state
+        pop     {{r0-r1}}
+        vmsr    FPEXC, r1
+        vmsr    FPSCR, r0
+        vpop    {{d16-d31}}
+        vpop    {{d0-d7}}
+        // restore more preserved registers
+        pop     {{r0-r3}}
+        "#
+    };
+}
+
 // Our assembly language exception handlers
 core::arch::global_asm!(
     r#"
     .section .text.handlers
-    // Work around https://github.com/rust-lang/rust/issues/127269
-    .fpu vfp3-d16
     .align 0
 
     // Called from the vector table when we have an software interrupt.
@@ -309,18 +373,36 @@ macro_rules! fpu_enable {
     };
 }
 
-// Start-up code for Armv7-R (and Armv8-R once we've left EL2)
+// Default start-up code for Armv7-A
 //
-// We set up our stacks and `kmain` in system mode.
+// We set up our stacks and `boot_core` in system mode.
 core::arch::global_asm!(
     r#"
     .section .text.startup
     .align 0
-    // Work around https://github.com/rust-lang/rust/issues/127269
-    .fpu vfp3-d16
 
-    .type _el1_start, %function
-    _el1_start:
+    .global _default_start
+    .type _default_start, %function
+    _default_start:
+
+        // only allow cpu0 through for initialization
+        // Read MPIDR
+	      mrc	p15,0,r1,c0,c0,5
+        // Extract CPU ID bits. For single-core systems, this should always be 0
+	      and	r1, r1, #0x3
+        cmp	r1, #0
+	      beq initialize
+    wait_loop:
+        wfe
+        // When Core 0 emits a SEV, the other cores will wake up.
+        // Load CPU ID, we are CPU0
+	      mrc	p15,0,r0,c0,c0,5
+        // Extract CPU ID bits.
+	      and	r0, r0, #0x3
+        bl      boot_core
+        // Should never returns, loop permanently here.
+        b .
+    initialize:
         // Set up stacks.
         ldr     r0, =_stack_top
         // Set stack pointer (right after) and mask interrupts for for UND mode (Mode 0x1B)
@@ -355,6 +437,7 @@ core::arch::global_asm!(
         mrc     p15, 0, r0, c1, c0, 0
         bic     r0, #{te_bit}
         mcr     p15, 0, r0, c1, c0, 0
+
     "#,
     fpu_enable!(),
     r#"
@@ -380,10 +463,12 @@ core::arch::global_asm!(
         b       0b
     1:
         // Jump to application
-        bl      kmain
+        // Load CPU ID, we are CPU0
+        ldr    r0, =0x0
+        bl      boot_core
         // In case the application returns, loop forever
         b       .
-    .size _el1_start, . - _el1_start
+    .size _default_start, . - _default_start
     "#,
     und_mode = const {
         Cpsr::new_with_raw_value(0)
@@ -430,93 +515,6 @@ core::arch::global_asm!(
     te_bit = const {
         cortex_ar::register::Sctlr::new_with_raw_value(0)
             .with_te(true)
-            .raw_value()
-    }
-);
-
-// Start-up code for Armv7-R.
-//
-// Go straight to our default routine
-#[cfg(arm_architecture = "v7-r")]
-core::arch::global_asm!(
-    r#"
-    .section .text.startup
-    .align 0
-
-    .global _default_start
-    .type _default_start, %function
-    _default_start:
-        ldr     pc, =_el1_start
-    .size _default_start, . - _default_start
-    "#
-);
-
-// Start-up code for Armv8-R.
-//
-// There's only one Armv8-R CPU (the Cortex-R52) and the FPU is mandatory, so we
-// always enable it.
-//
-// We boot into EL2, set up a stack pointer, and run `kmain` in EL1.
-#[cfg(arm_architecture = "v8-r")]
-core::arch::global_asm!(
-    r#"
-    .section .text.startup
-    .align 0
-
-    .global _default_start
-    .type _default_start, %function
-    _default_start:
-        // Are we in EL2? If not, skip the EL2 setup portion
-        mrs     r0, cpsr
-        and     r0, r0, 0x1F
-        cmp     r0, {cpsr_mode_hyp}
-        bne     1f
-        // Set stack pointer
-        ldr     sp, =_stack_top
-        // Set the HVBAR (for EL2) to _vector_table
-        ldr     r0, =_vector_table
-        mcr     p15, 4, r0, c12, c0, 0
-        // Configure HACTLR to let us enter EL1
-        mrc     p15, 4, r0, c1, c0, 1
-        mov     r1, {hactlr_bits}
-        orr     r0, r0, r1
-        mcr     p15, 4, r0, c1, c0, 1
-        // Program the SPSR - enter system mode (0x1F) in Arm mode with IRQ, FIQ masked
-        mov		r0, {sys_mode}
-        msr		spsr_hyp, r0
-        adr		r0, 1f
-        msr		elr_hyp, r0
-        dsb
-        isb
-        eret
-    1:
-        // Set the VBAR (for EL1) to _vector_table. NB: This isn't required on
-        // Armv7-R because that only supports 'low' (default) or 'high'.
-        ldr     r0, =_vector_table
-        mcr     p15, 0, r0, c12, c0, 0
-        // go do the rest of the EL1 init
-        ldr     pc, =_el1_start
-    .size _default_start, . - _default_start
-    "#,
-    cpsr_mode_hyp = const ProcessorMode::Hyp as u8,
-    hactlr_bits = const {
-        Hactlr::new_with_raw_value(0)
-            .with_cpuactlr(true)
-            .with_cdbgdci(true)
-            .with_flashifregionr(true)
-            .with_periphpregionr(true)
-            .with_qosr(true)
-            .with_bustimeoutr(true)
-            .with_intmonr(true)
-            .with_err(true)
-            .with_testr1(true)
-            .raw_value()
-    },
-    sys_mode = const {
-        Cpsr::new_with_raw_value(0)
-            .with_mode(ProcessorMode::Sys)
-            .with_i(true)
-            .with_f(true)
             .raw_value()
     }
 );

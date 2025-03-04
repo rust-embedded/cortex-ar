@@ -2,18 +2,39 @@
 //!
 //! Hopefully Rust will stabilise these kinds of target features, and this won't
 //! be required.
+#[derive(Default)]
+pub struct TargetInfo {
+    profile: Option<Profile>,
+    arch: Option<Arch>,
+    isa: Option<Isa>,
+}
 
+impl TargetInfo {
+    pub fn profile(&self) -> Option<Profile> {
+        self.profile
+    }
+
+    pub fn arch(&self) -> Option<Arch> {
+        self.arch
+    }
+
+    pub fn isa(&self) -> Option<Isa> {
+        self.isa
+    }
+}
 /// Process the ${TARGET} environment variable, and emit cargo configuration to
 /// standard out.
-pub fn process() {
+pub fn process() -> TargetInfo {
     let target = std::env::var("TARGET").expect("build script TARGET variable");
-    process_target(&target);
+    process_target(&target)
 }
 
 /// Process a given target string, and emit cargo configuration to standard out.
-pub fn process_target(target: &str) {
+pub fn process_target(target: &str) -> TargetInfo {
+    let mut target_info = TargetInfo::default();
     if let Some(isa) = Isa::get(target) {
         println!(r#"cargo:rustc-cfg=arm_isa="{}""#, isa);
+        target_info.isa = Some(isa);
     }
     println!(
         r#"cargo:rustc-check-cfg=cfg(arm_isa, values({}))"#,
@@ -22,6 +43,7 @@ pub fn process_target(target: &str) {
 
     if let Some(arch) = Arch::get(target) {
         println!(r#"cargo:rustc-cfg=arm_architecture="{}""#, arch);
+        target_info.arch = Some(arch);
     }
     println!(
         r#"cargo:rustc-check-cfg=cfg(arm_architecture, values({}))"#,
@@ -30,14 +52,17 @@ pub fn process_target(target: &str) {
 
     if let Some(profile) = Profile::get(target) {
         println!(r#"cargo:rustc-cfg=arm_profile="{}""#, profile);
+        target_info.profile = Some(profile);
     }
     println!(
         r#"cargo:rustc-check-cfg=cfg(arm_profile, values({}))"#,
         Profile::values()
     );
+    target_info
 }
 
 /// The Arm Instruction Set
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Isa {
     /// A64 instructions are executed by Arm processors in Aarch64 mode
     A64,
@@ -91,6 +116,7 @@ impl core::fmt::Display for Isa {
 /// The Arm Architecture
 ///
 /// As defined by a particular revision of the Arm Architecture Reference Manual (ARM).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Arch {
     /// Armv6-M (also known as ARMv6-M)
     Armv6M,
@@ -129,6 +155,8 @@ impl Arch {
             Some(Arch::Armv7R)
         } else if target.starts_with("armv8r-") {
             Some(Arch::Armv8R)
+        } else if target.starts_with("armv7a-") {
+            Some(Arch::Armv7A)
         } else if target.starts_with("aarch64-") || target.starts_with("aarch64be-") {
             Some(Arch::Armv8A)
         } else {
@@ -188,6 +216,7 @@ impl core::fmt::Display for Arch {
 }
 
 /// The Arm Architecture Profile.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Profile {
     /// Microcontrollers
     M,

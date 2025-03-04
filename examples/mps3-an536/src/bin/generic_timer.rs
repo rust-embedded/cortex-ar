@@ -4,7 +4,7 @@
 #![no_main]
 
 // pull in our start-up code
-use cortex_r_examples as _;
+use mps3_an536 as _;
 
 use semihosting::println;
 
@@ -17,14 +17,7 @@ pub extern "C" fn kmain() {
     semihosting::process::exit(0);
 }
 
-/// A placeholder function so that the workspace still builds
-#[cfg(not(arm_architecture = "v8-r"))]
-fn main() {
-    println!("No generic timers on this platform");
-}
-
 /// Let's test some timers!
-#[cfg(arm_architecture = "v8-r")]
 fn main() {
     use cortex_ar::generic_timer::{El1PhysicalTimer, El1VirtualTimer, GenericTimer};
     let cntfrq = cortex_ar::register::Cntfrq::read().0;

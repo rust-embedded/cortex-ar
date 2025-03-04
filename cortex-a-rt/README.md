@@ -1,4 +1,10 @@
-# Examples for Arm Cortex-R
+# Arm Cortex-A Run-Time
+
+## Features
+
+- `vfp-dp`: Enables support for the double-precision VFP floating point support. If your target
+  CPU has this feature or support for NEON which also implies double-precision support, this
+  feature should be activated.
 
 ## Minimum Supported Rust Version (MSRV)
 
@@ -7,7 +13,8 @@ compile with older versions but that may change in any new patch release.
 
 ## Licence
 
-Copyright (c) Ferrous Systems, 2025
+* Copyright (c) Ferrous Systems
+* Copyright (c) The Rust Embedded Devices Working Group developers
 
 Licensed under either [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE) at
 your option.

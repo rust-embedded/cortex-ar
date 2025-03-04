@@ -2,8 +2,8 @@ Hello, this is semihosting! x = 1.000, y = 2.000
 PANIC: PanicInfo {
     message: I am an example panic,
     location: Location {
-        file: "cortex-r-examples/src/bin/hello.rs",
-        line: 29,
+        file: "src/bin/hello.rs",
+        line: 19,
         col: 5,
     },
     can_unwind: true,

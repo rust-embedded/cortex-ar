@@ -1,4 +1,4 @@
-# Rust on Arm Cortex-R
+# Rust on Arm Cortex-R and Cortex-A
 
 This repository provides support for:
 
@@ -17,9 +17,10 @@ There are currently three libraries here:
 
 * [cortex-ar](./cortex-ar/) - support library for Cortex-R and Cortex-A CPUs (like [cortex-m])
 * [cortex-r-rt](./cortex-r-rt/) - run-time library for Cortex-R CPUs (like [cortex-m-rt])
+* [cortex-a-rt](./cortex-a-rt/) - run-time library for Cortex-A CPUs (like [cortex-m-rt])
 * [arm-targets](./arm-targets/) - a helper library for your build.rs that sets various `--cfg` flags according to the current target
 
-There are also example programs for QEMU in the [cortex-r-examples](./cortex-r-examples/) folder.
+There are also example programs for QEMU in the [examples](./examples/) folder.
 
 [cortex-m]: https://crates.io/crates/cortex-m
 [cortex-m-rt]: https://crates.io/crates/cortex-m-rt

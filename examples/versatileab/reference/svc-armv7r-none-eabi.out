@@ -5,8 +5,8 @@ x = 1, y = 2, z = 3.000
 PANIC: PanicInfo {
     message: I am an example panic,
     location: Location {
-        file: "cortex-r-examples/src/bin/svc.rs",
-        line: 32,
+        file: "src/bin/svc.rs",
+        line: 22,
         col: 5,
     },
     can_unwind: true,

@@ -4,8 +4,7 @@
 #![no_main]
 
 // pull in our start-up code
-use cortex_ar as _;
-use cortex_r_examples as _;
+use mps3_an536 as _;
 
 use arm_gic::{
     gicv3::{Group, SgiTarget},
@@ -15,32 +14,24 @@ use semihosting::println;
 
 type SingleCoreGic = arm_gic::gicv3::GicV3<1>;
 
-/// The entry-point to the Rust application.
-///
-/// It is called by the start-up code in `cortex-m-rt`.
-#[no_mangle]
-pub extern "C" fn kmain() {
-    if let Err(e) = main() {
-        panic!("main returned {:?}", e);
-    }
-    semihosting::process::exit(0);
-}
-
 /// Offset from PERIPHBASE for GIC Distributor
 const GICD_BASE_OFFSET: usize = 0x0000_0000usize;
 
 /// Offset from PERIPHBASE for the first GIC Redistributor
 const GICR_BASE_OFFSET: usize = 0x0010_0000usize;
 
-fn dump_cpsr() {
-    let cpsr = cortex_ar::register::Cpsr::read();
-    println!("CPSR: {:?}", cpsr);
+/// The entry-point to the Rust application.
+///
+/// It is called by the start-up code in `cortex-m-rt`.
+#[no_mangle]
+pub extern "C" fn kmain() {
+    main();
 }
 
 /// The main function of our Rust application.
 ///
 /// Called by [`kmain`].
-fn main() -> Result<(), core::fmt::Error> {
+fn main() -> ! {
     // Get the GIC address by reading CBAR
     let periphbase = cortex_ar::register::ImpCbar::read().periphbase();
     println!("Found PERIPHBASE {:010p}", periphbase);
@@ -90,7 +81,12 @@ fn main() -> Result<(), core::fmt::Error> {
         cortex_ar::asm::nop();
     }
 
-    Ok(())
+    semihosting::process::exit(0);
+}
+
+fn dump_cpsr() {
+    let cpsr = cortex_ar::register::Cpsr::read();
+    println!("CPSR: {:?}", cpsr);
 }
 
 #[no_mangle]

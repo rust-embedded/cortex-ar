@@ -1,0 +1,24 @@
+[package]
+authors = ["Jonathan Pallant <jonathan.pallant@ferrous-systems.com>", "The Cortex-R Team <cortex-r@teams.rust-embedded.org>"]
+default-run = "hello"
+edition = "2021"
+name = "versatileab"
+description = "Examples for the QEMU Versatile baseboard device (Arm Cortex-A)"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/rust-embedded/cortex-ar.git"
+homepage = "https://github.com/rust-embedded/cortex-ar.git"
+rust-version = "1.82"
+version = "0.1.0"
+
+[dependencies]
+cortex-ar = { path = "../../cortex-ar", features = ["critical-section-single-core"] }
+cortex-a-rt = { path = "../../cortex-a-rt" }
+cortex-r-rt = { path = "../../cortex-r-rt" }
+semihosting = { version = "0.1.18", features = ["stdio"] }
+
+[build-dependencies]
+arm-targets = { version = "0.1.0", path = "../../arm-targets" }
+
+[features]
+eabi-fpu = ["cortex-a-rt/eabi-fpu", "cortex-r-rt/eabi-fpu"]

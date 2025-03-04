@@ -4,8 +4,7 @@
 #![no_main]
 
 // pull in our start-up code
-use cortex_ar as _;
-use cortex_r_examples as _;
+use mps3_an536 as _;
 
 use semihosting::println;
 
@@ -14,15 +13,13 @@ use semihosting::println;
 /// It is called by the start-up code in `cortex-m-rt`.
 #[no_mangle]
 pub extern "C" fn kmain() {
-    if let Err(e) = main() {
-        panic!("main returned {:?}", e);
-    }
+    main();
 }
 
 /// The main function of our Rust application.
 ///
 /// Called by [`kmain`].
-fn main() -> Result<(), core::fmt::Error> {
+fn main() -> ! {
     let x = 1.0f64;
     let y = x * 2.0;
     println!("Hello, this is semihosting! x = {:0.3}, y = {:0.3}", x, y);

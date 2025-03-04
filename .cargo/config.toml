@@ -6,6 +6,15 @@ runner = "qemu-system-arm -machine mps3-an536 -cpu cortex-r52 -semihosting -nogr
 runner = "qemu-system-arm -machine versatileab -cpu cortex-r5f -semihosting -nographic -kernel"
 
 [target.armv7r-none-eabi]
-# change to '-mcpu=cortex-r5' to '-mcpu=cortex-r5f' if you use eabi-fpu feature, otherwise
+# change '-mcpu=cortex-r5' to '-mcpu=cortex-r5f' if you use eabi-fpu feature, otherwise
 # qemu-system-arm will lock up
 runner = "qemu-system-arm -machine versatileab -cpu cortex-r5 -semihosting -nographic -kernel"
+
+[target.armv7a-none-eabihf]
+runner = "qemu-system-arm -machine versatileab -cpu cortex-a8 -semihosting -nographic -kernel"
+
+[target.armv7a-none-eabi]
+runner = "qemu-system-arm -machine versatileab -cpu cortex-a8 -semihosting -nographic -kernel"
+
+[unstable]
+build-std = ["core", "alloc"]

@@ -7,6 +7,7 @@ mod critical_section;
 
 pub mod asm;
 pub mod interrupt;
+pub mod mmu;
 pub mod register;
 
 #[cfg(any(test, arm_architecture = "v7-r"))]

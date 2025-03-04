@@ -6,17 +6,29 @@ on:
 name: Build
 
 jobs:
+  # Define Rust versions dynamically
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.rust_versions }}
+    steps:
+      - id: set-matrix
+        run: |
+          echo 'rust_versions={"rust": ["stable", "1.82"]}' >> "$GITHUB_OUTPUT"
+
   # Build the workspace for a target architecture
   build:
     runs-on: ubuntu-24.04
+    needs: setup
     strategy:
       matrix:
-        rust: [stable, 1.82]
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
         target:
           - armebv7r-none-eabi
           - armebv7r-none-eabihf
           - armv7r-none-eabi
           - armv7r-none-eabihf
+          - armv7a-none-eabi
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,11 +41,51 @@ jobs:
         run: |
           cargo build --target ${{ matrix.target }}
           cargo build --target ${{ matrix.target }} --no-default-features
-          cargo build --target ${{ matrix.target }} --all-features
+
+  build-versatileab:
+    runs-on: ubuntu-24.04
+    needs: setup
+    strategy:
+      matrix:
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install rust
+        run: |
+          rustup install ${{ matrix.rust }}
+          rustup default ${{ matrix.rust }}
+          rustup target add armv7a-none-eabi
+          rustup target add armv7r-none-eabi
+          rustup target add armv7r-none-eabihf
+      - name: Build
+        run: |
+          cargo build --manifest-path ./examples/versatileab/Cargo.toml --target armv7a-none-eabi
+          cargo build --manifest-path ./examples/versatileab/Cargo.toml --target armv7r-none-eabi
+          cargo build --manifest-path ./examples/versatileab/Cargo.toml --target armv7r-none-eabihf
+
+  build-mps3-an536:
+    runs-on: ubuntu-24.04
+    needs: setup
+    strategy:
+      matrix:
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install rust
+        run: |
+          rustup install nightly
+          rustup default nightly
+          rustup component add rust-src --toolchain nightly
+      - name: Build
+        run: |
+          cargo build --manifest-path ./examples/mps3-an536/Cargo.toml --target armv8r-none-eabihf -Zbuild-std=core
 
   # Build the host tools
   build-host:
     runs-on: ubuntu-24.04
+    needs: setup
     strategy:
       matrix:
         rust: [stable, 1.59]
@@ -58,6 +110,8 @@ jobs:
           - armebv7r-none-eabi
           - armebv7r-none-eabihf
           - armv7r-none-eabi
+          - armv7a-none-eabi
+          - armv7a-none-eabihf
           - armv7r-none-eabihf
           - armv8r-none-eabihf
     steps:
@@ -72,22 +126,23 @@ jobs:
         run: |
           cargo build --target ${{ matrix.target }} -Zbuild-std=core
           cargo build --target ${{ matrix.target }} -Zbuild-std=core --no-default-features
-          cargo build --target ${{ matrix.target }} -Zbuild-std=core --all-features
 
   # Gather all the above build jobs together for the purposes of getting an overall pass-fail
   build-all:
     runs-on: ubuntu-24.04
-    needs: [build, build-tier3, build-host]
+    needs: [build, build-tier3, build-host, build-versatileab, build-mps3-an536]
     steps:
       - run: /bin/true
 
   # Build the docs for the workspace
   docs:
     runs-on: ubuntu-24.04
+    needs: setup
     strategy:
       matrix:
-        rust: [stable, 1.82]
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
         target:
+          - armv7a-none-eabi
           - armebv7r-none-eabi
           - armebv7r-none-eabihf
           - armv7r-none-eabi
@@ -109,9 +164,10 @@ jobs:
   # Build the docs for the host tools
   docs-host:
     runs-on: ubuntu-24.04
+    needs: setup
     strategy:
       matrix:
-        rust: [stable, 1.82]
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -170,14 +226,16 @@ jobs:
   # Run clippy on the workpace
   clippy:
     runs-on: ubuntu-24.04
+    needs: setup
     strategy:
       matrix:
-        rust: [stable, 1.82]
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
         target:
           - armebv7r-none-eabi
           - armebv7r-none-eabihf
           - armv7r-none-eabi
           - armv7r-none-eabihf
+          - armv7a-none-eabi
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -196,9 +254,10 @@ jobs:
   # Run clippy on the host tools
   clippy-host:
     runs-on: ubuntu-24.04
+    needs: setup
     strategy:
       matrix:
-        rust: [stable, 1.82]
+        rust: ${{ fromJSON(needs.setup.outputs.matrix).rust }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -12,10 +12,11 @@ rust-version = "1.82"
 version = "0.1.0"
 
 [dependencies]
-cortex-ar = { path = "../../cortex-ar", features = ["critical-section-single-core"] }
+cortex-ar = { path = "../../cortex-ar", features = ["critical-section-multi-core"] }
 cortex-r-rt = { path = "../../cortex-r-rt" }
 semihosting = { version = "0.1.18", features = ["stdio"] }
 arm-gic = { git = "https://github.com/google/arm-gic.git", rev = "46a8fc1720f5c28fccf4dfb5953b88dab7012e9c", optional = true }
+critical-section = "1.2.0"
 
 [build-dependencies]
 arm-targets = {version = "0.1.0", path = "../../arm-targets"}

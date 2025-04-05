@@ -488,10 +488,10 @@ core::arch::global_asm!(
     // Work around https://github.com/rust-lang/rust/issues/127269
     .fpu vfp3-d16
 
-    .type _el1_start, %function
-    _el1_start:
-        // Set up stacks.
-        ldr     r0, =_stack_top
+    // Pass in stack top in r0
+    .global _stack_setup
+    .type _stack_setup, %function
+    _stack_setup:
         // Set stack pointer (right after) and mask interrupts for for UND mode (Mode 0x1B)
         msr     cpsr, {und_mode}
         mov     sp, r0
@@ -524,6 +524,14 @@ core::arch::global_asm!(
         mrc     p15, 0, r0, c1, c0, 0
         bic     r0, #{te_bit}
         mcr     p15, 0, r0, c1, c0, 0
+        bx      lr
+    .size _stack_setup, . - _stack_setup
+
+    .type _el1_start, %function
+    _el1_start:
+        // Set up stacks.
+        ldr     r0, =_stack_top
+        bl      _stack_setup
     "#,
     fpu_enable!(),
     r#"
@@ -651,10 +659,10 @@ core::arch::global_asm!(
         orr     r0, r0, r1
         mcr     p15, 4, r0, c1, c0, 1
         // Program the SPSR - enter system mode (0x1F) in Arm mode with IRQ, FIQ masked
-        mov		r0, {sys_mode}
-        msr		spsr_hyp, r0
-        adr		r0, 1f
-        msr		elr_hyp, r0
+        mov     r0, {sys_mode}
+        msr     spsr_hyp, r0
+        adr     r0, 1f
+        msr     elr_hyp, r0
         dsb
         isb
         eret

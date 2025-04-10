@@ -56,6 +56,24 @@
 //! `__sbss` and `__ebss` is zeroed, and the memory between `__sdata` and
 //! `__edata` is initialised with the data found at `__sidata`.
 //!
+//! The stacks look like:
+//!
+//! ```text
+//! +------------------+ <----_stack_top
+//! |     UND Stack    | } _und_stack_size bytes
+//! +------------------+
+//! |     SVC Stack    | } _svc_stack_size bytes
+//! +------------------+
+//! |     ABT Stack    | } _abt_stack_size bytes
+//! +------------------+
+//! |     IRQ Stack    | } _irq_stack_size bytes
+//! +------------------+
+//! |     FIQ Stack    | } _fiq_stack_size bytes
+//! +------------------+
+//! |     SYS Stack    | } No specific size
+//! +------------------+
+//! ```
+//!
 //! ### C-Compatible Functions
 //!
 //! * `kmain` - the `extern "C"` entry point to your application.

@@ -67,6 +67,8 @@ if qemu-system-arm --version | grep "version 9"; then
         cargo +nightly run ${mps3_an536_cargo} --target=armv8r-none-eabihf --bin $binary --features=gic -Zbuild-std=core | tee ./target/$binary-armv8r-none-eabihf.out
         my_diff ./examples/mps3-an536/reference/$binary-armv8r-none-eabihf.out ./target/$binary-armv8r-none-eabihf.out || fail $binary "armv8r-none-eabihf"
     done
+    cargo +nightly run ${mps3_an536_cargo} --target=armv8r-none-eabihf --bin smp_test --features=gic -Zbuild-std=core -- -smp 2 | tee ./target/smp_test-armv8r-none-eabihf_smp2.out
+    my_diff ./examples/mps3-an536/reference/smp_test-armv8r-none-eabihf_smp2.out ./target/smp_test-armv8r-none-eabihf_smp2.out || fail smp_test "armv8r-none-eabihf"
 fi
 
 if [ "$FAILURE" == "1" ]; then

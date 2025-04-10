@@ -56,3 +56,15 @@ pub fn sev() {
         core::arch::asm!("sev");
     }
 }
+
+/// Which core are we?
+///
+/// Return the bottom 24-bits of the MPIDR
+#[inline]
+pub fn core_id() -> u32 {
+    let r: u32;
+    unsafe {
+        core::arch::asm!("MRC p15, 0, {}, c0, c0, 5", out(reg) r, options(nomem, nostack, preserves_flags));
+    }
+    return r & 0x00FF_FFFF;
+}

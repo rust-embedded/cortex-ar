@@ -53,6 +53,26 @@
 //! `__sbss` and `__ebss` is zeroed, and the memory between `__sdata` and
 //! `__edata` is initialised with the data found at `__sidata`.
 //!
+//! The stacks look like:
+//!
+//! ```text
+//! +------------------+ <----_stack_top
+//! |     HYP Stack    | } _hyp_stack_size bytes (Armv8-R only)
+//! +------------------+
+//! |     UND Stack    | } _und_stack_size bytes
+//! +------------------+
+//! |     SVC Stack    | } _svc_stack_size bytes
+//! +------------------+
+//! |     ABT Stack    | } _abt_stack_size bytes
+//! +------------------+
+//! |     IRQ Stack    | } _irq_stack_size bytes
+//! +------------------+
+//! |     FIQ Stack    | } _fiq_stack_size bytes
+//! +------------------+
+//! |     SYS Stack    | } No specific size
+//! +------------------+
+//! ```
+//!
 //! ### C-Compatible Functions
 //!
 //! * `kmain` - the `extern "C"` entry point to your application.
@@ -213,6 +233,9 @@
 //!   `_irq_handler`
 //! * `_asm_default_fiq_handler` - an FIQ handler that just spins
 //! * `_default_handler` - a C compatible function that spins forever.
+//! * `_init_segments` - initialises `.bss` and `.data`
+//! * `_stack_setup` - initialises UND, SVC, ABT, IRQ, FIQ and SYS stacks from
+//!   the address given in `r0`
 //!
 //! The assembly language trampolines are required because Armv7-R (and Armv8-R)
 //! processors do not save a great deal of state on entry to an exception
@@ -573,12 +596,17 @@ core::arch::global_asm!(
     r#"
     // Work around https://github.com/rust-lang/rust/issues/127269
     .fpu vfp3-d16
-    
-    .section .text.el1_start
-    .type _el1_start, %function
-    _el1_start:
-        // Set up stacks.
-        ldr     r0, =_stack_top
+
+    // Configure a stack for every mode. Leaves you in sys mode.
+    //
+    // Pass in stack top in r0.
+    .section .text._stack_setup
+    .global _stack_setup
+    .type _stack_setup, %function
+    _stack_setup:
+        // Save LR from whatever mode we're currently in
+        mov     r2, lr
+        // (we might not be in the same mode when we return).
         // Set stack pointer (right after) and mask interrupts for for UND mode (Mode 0x1B)
         msr     cpsr, {und_mode}
         mov     sp, r0
@@ -607,13 +635,19 @@ core::arch::global_asm!(
         // Set stack pointer (right after) and mask interrupts for for System mode (Mode 0x1F)
         msr     cpsr, {sys_mode}
         mov     sp, r0
-        // Clear the Thumb Exception bit because we're in Arm mode
-        mrc     p15, 0, r0, c1, c0, 0
-        bic     r0, #{te_bit}
-        mcr     p15, 0, r0, c1, c0, 0
-    "#,
-    fpu_enable!(),
-    r#"
+        // Clear the Thumb Exception bit because all our targets are currently
+        // for Arm (A32) mode
+        mrc     p15, 0, r1, c1, c0, 0
+        bic     r1, #{te_bit}
+        mcr     p15, 0, r1, c1, c0, 0
+        bx      r2
+    .size _stack_setup, . - _stack_setup
+
+    // Initialises stacks, .data and .bss
+    .section .text._init_segments
+    .global _init_segments
+    .type _init_segments, %function
+    _init_segments:
         // Initialise .bss
         ldr     r0, =__sbss
         ldr     r1, =__ebss
@@ -635,11 +669,8 @@ core::arch::global_asm!(
         stm     r0!, {{r3}}
         b       0b
     1:
-        // Jump to application
-        bl      kmain
-        // In case the application returns, loop forever
-        b       .
-    .size _el1_start, . - _el1_start
+        bx      lr
+    .size _init_segments, . - _init_segments
     "#,
     und_mode = const {
         Cpsr::new_with_raw_value(0)
@@ -703,7 +734,18 @@ core::arch::global_asm!(
     .global _default_start
     .type _default_start, %function
     _default_start:
-        ldr     pc, =_el1_start
+        // Set up stacks.
+        ldr     r0, =_stack_top
+        bl      _stack_setup
+        // Init .data and .bss
+        bl      _init_segments
+        "#,
+    fpu_enable!(),
+    r#"
+        // Jump to application
+        bl      kmain
+        // In case the application returns, loop forever
+        b       .
     .size _default_start, . - _default_start
     "#
 );
@@ -731,30 +773,42 @@ core::arch::global_asm!(
         cmp     r0, {cpsr_mode_hyp}
         bne     1f
         // Set stack pointer
-        ldr     sp, =_stack_top
+        ldr     r0, =_stack_top
+        mov     sp, r0
+        ldr     r1, =_hyp_stack_size
+        sub     r0, r0, r1
         // Set the HVBAR (for EL2) to _vector_table
-        ldr     r0, =_vector_table
-        mcr     p15, 4, r0, c12, c0, 0
+        ldr     r1, =_vector_table
+        mcr     p15, 4, r1, c12, c0, 0
         // Configure HACTLR to let us enter EL1
-        mrc     p15, 4, r0, c1, c0, 1
-        mov     r1, {hactlr_bits}
-        orr     r0, r0, r1
-        mcr     p15, 4, r0, c1, c0, 1
+        mrc     p15, 4, r1, c1, c0, 1
+        mov     r2, {hactlr_bits}
+        orr     r1, r1, r2
+        mcr     p15, 4, r1, c1, c0, 1
         // Program the SPSR - enter system mode (0x1F) in Arm mode with IRQ, FIQ masked
-        mov		r0, {sys_mode}
-        msr		spsr_hyp, r0
-        adr		r0, 1f
-        msr		elr_hyp, r0
+        mov		r1, {sys_mode}
+        msr		spsr_hyp, r1
+        adr		r1, 1f
+        msr		elr_hyp, r1
         dsb
         isb
         eret
     1:
+        // Set up stacks. r0 points to the bottom of the hyp stack.
+        bl      _stack_setup
         // Set the VBAR (for EL1) to _vector_table. NB: This isn't required on
         // Armv7-R because that only supports 'low' (default) or 'high'.
         ldr     r0, =_vector_table
         mcr     p15, 0, r0, c12, c0, 0
-        // go do the rest of the EL1 init
-        ldr     pc, =_el1_start
+        // Init .data and .bss
+        bl      _init_segments
+        "#,
+        fpu_enable!(),
+        r#"
+        // Jump to application
+        bl      kmain
+        // In case the application returns, loop forever
+        b       .
     .size _default_start, . - _default_start
     "#,
     cpsr_mode_hyp = const ProcessorMode::Hyp as u8,

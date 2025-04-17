@@ -26,10 +26,9 @@ pub extern "C" fn kmain() -> ! {
         bkpt_from_a32();
     }
 
-    // this should be impossible because returning from the fault handler will
-    // immediately trigger the fault again.
+    println!("Recovered from fault OK!");
 
-    unreachable!("should never be here!");
+    semihosting::process::exit(0);
 }
 
 // These functions are written in assembly
@@ -73,12 +72,24 @@ unsafe extern "C" fn _prefetch_handler(addr: usize) -> usize {
         );
     }
 
-    if COUNTER.fetch_add(1, Ordering::Relaxed) == 1 {
-        // we've faulted twice - time to quit
-        semihosting::process::exit(0);
+    match COUNTER.fetch_add(1, Ordering::Relaxed) {
+        0 => {
+            // first time, huh?
+            // go back and do it again
+            println!("Doing it again");
+            addr
+        }
+        1 => {
+            // second time, huh?
+            // go back but skip the instruction
+            println!("Skipping instruction");
+            addr + 4
+        }
+        _ => {
+            // we've faulted thrice - time to quit
+            panic!("_prefetch_handler called too often");
+        }
     }
-
-    addr
 }
 
 #[unsafe(no_mangle)]

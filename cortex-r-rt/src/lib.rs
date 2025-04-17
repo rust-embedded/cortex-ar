@@ -409,8 +409,6 @@ core::arch::global_asm!(
         ite     eq
         subeq   lr, lr, #4
         subne   lr, lr, #2
-        // save the newly computed LR
-        push    {{lr}}
         // now do our standard exception save
     "#,
     save_context!(),
@@ -425,8 +423,6 @@ core::arch::global_asm!(
     "#,
     restore_context!(),
     r#"
-        // get our saved LR
-        pop     {{lr}}
         // get our real saved R0
         pop     {{r0}}
         // overwrite the saved LR with the adjusted one
@@ -487,6 +483,8 @@ core::arch::global_asm!(
     "#,
     restore_context!(),
     r#"
+        // overwrite the saved LR with the adjusted one
+        str     lr, [sp]
         // Return to the failing instruction which is the recommended approach by ARM.
         rfefd   sp!
     .size _asm_default_abort_handler, . - _asm_default_abort_handler
@@ -516,6 +514,8 @@ core::arch::global_asm!(
     "#,
     restore_context!(),
     r#"
+        // overwrite the saved LR with the adjusted one
+        str     lr, [sp]
         // Return to the failing instruction which is the recommended approach by ARM.
         rfefd   sp!
     .size _asm_default_prefetch_handler, . - _asm_default_prefetch_handler

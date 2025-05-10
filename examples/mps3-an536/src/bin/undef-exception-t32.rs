@@ -7,6 +7,9 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use semihosting::println;
 
 // pull in our start-up code
+use cortex_r_rt::{entry, exception};
+
+// pull in our library
 use mps3_an536 as _;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -14,8 +17,8 @@ static COUNTER: AtomicU32 = AtomicU32::new(0);
 /// The entry-point to the Rust application.
 ///
 /// It is called by the start-up.
-#[no_mangle]
-pub extern "C" fn kmain() -> ! {
+#[entry]
+fn main() -> ! {
     println!("Hello, this is a undef exception example");
 
     unsafe {
@@ -46,13 +49,13 @@ core::arch::global_asm!(
 "#
 );
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _prefetch_handler(_addr: usize) -> ! {
+#[exception(PrefetchAbort)]
+fn prefetch_abort_handler(_addr: usize) -> ! {
     panic!("unexpected undefined exception");
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _undefined_handler(addr: usize) -> usize {
+#[exception(Undefined)]
+unsafe fn undefined_handler(addr: usize) -> usize {
     println!("undefined abort occurred");
 
     if (addr + 1) == udf_from_t32 as usize {
@@ -87,7 +90,7 @@ unsafe extern "C" fn _undefined_handler(addr: usize) -> usize {
     }
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _abort_handler(_addr: usize) -> ! {
-    panic!("unexpected abort exception");
+#[exception(DataAbort)]
+fn data_abort_handler(_addr: usize) -> ! {
+    panic!("unexpected data abort exception");
 }

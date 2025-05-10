@@ -8,5 +8,6 @@ members = [
   "cortex-ar",
   "cortex-r-rt",
   "cortex-a-rt",
+  "cortex-ar-rt-macros",
 ]
 resolver = "2"

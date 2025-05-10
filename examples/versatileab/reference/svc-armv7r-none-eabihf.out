@@ -1,12 +1,12 @@
 x = 1, y = 2, z = 3.000
-In _svc_handler, with arg=0xabcdef
-In _svc_handler, with arg=0x456789
+In svc_handler, with arg=0xabcdef
+In svc_handler, with arg=0x456789
 x = 1, y = 2, z = 3.000
 PANIC: PanicInfo {
     message: I am an example panic,
     location: Location {
         file: "src/bin/svc.rs",
-        line: 28,
+        line: 22,
         col: 5,
     },
     can_unwind: true,

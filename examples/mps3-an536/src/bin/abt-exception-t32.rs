@@ -6,7 +6,11 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use cortex_ar::register::{Dfar, Dfsr, Sctlr};
+
 // pull in our start-up code
+use cortex_r_rt::{entry, exception};
+
+// pull in our library
 use mps3_an536 as _;
 
 use semihosting::println;
@@ -17,14 +21,7 @@ static COUNTER: AtomicU32 = AtomicU32::new(0);
 /// The entry-point to the Rust application.
 ///
 /// It is called by the start-up.
-#[no_mangle]
-pub extern "C" fn kmain() -> ! {
-    main();
-}
-
-/// The main function of our Rust application.
-#[export_name = "main"]
-#[allow(unreachable_code)]
+#[entry]
 fn main() -> ! {
     // Enable alignment check for Armv7-R. Was not required
     // on Cortex-A for some reason, even though the bit was not set.
@@ -73,18 +70,18 @@ fn disable_alignment_check() {
     Sctlr::write(sctrl);
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _undefined_handler(_addr: u32) -> ! {
+#[exception(Undefined)]
+fn undefined_handler(_addr: usize) -> ! {
     panic!("unexpected undefined exception");
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _prefetch_handler(_addr: u32) -> ! {
-    panic!("unexpected prefetch exception");
+#[exception(PrefetchAbort)]
+fn prefetch_abort_handler(_addr: usize) -> ! {
+    panic!("unexpected prefetch abort");
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn _abort_handler(addr: usize) -> usize {
+#[exception(DataAbort)]
+unsafe fn data_abort_handler(addr: usize) -> usize {
     println!("data abort occurred");
     // If this is not disabled, reading DFAR will trigger an alignment fault on Armv8-R, leading
     // to a loop.

@@ -14,6 +14,9 @@ use core::cell::{RefCell, UnsafeCell};
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 // pull in our start-up code
+use cortex_r_rt::entry;
+
+// pull in our library
 use mps3_an536 as _;
 
 use semihosting::println;
@@ -58,9 +61,9 @@ const CS_MUTEX_LOOPS: u32 = 1000;
 
 /// The entry-point to the Rust application.
 ///
-/// It is called by the start-up code in `cortex-m-rt`.
-#[no_mangle]
-pub extern "C" fn kmain() {
+/// It is called by the start-up code in `cortex-r-rt`.
+#[entry]
+fn main() -> ! {
     let fpga_led = 0xE020_2000 as *mut u32;
     extern "C" {
         static mut _core1_stack_pointer: usize;

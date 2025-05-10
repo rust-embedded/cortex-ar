@@ -4,22 +4,14 @@
 #![no_main]
 
 // pull in our start-up code
-use versatileab as _;
+use versatileab::rt::entry;
 
 use semihosting::println;
 
 /// The entry-point to the Rust application.
 ///
 /// It is called by the start-up.
-#[no_mangle]
-pub extern "C" fn kmain() -> ! {
-    main();
-}
-
-/// The entry-point to the Rust application.
-///
-/// It is called by the start-up code in `cortex-m-rt`.
-#[export_name = "main"]
+#[entry]
 fn main() -> ! {
     chip_info();
     test_changing_sctlr();

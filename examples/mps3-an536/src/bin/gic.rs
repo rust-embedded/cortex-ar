@@ -4,6 +4,9 @@
 #![no_main]
 
 // pull in our start-up code
+use cortex_r_rt::{entry, irq};
+
+// pull in our library
 use mps3_an536 as _;
 
 use arm_gic::{
@@ -20,17 +23,13 @@ const GICD_BASE_OFFSET: usize = 0x0000_0000usize;
 /// Offset from PERIPHBASE for the first GIC Redistributor
 const GICR_BASE_OFFSET: usize = 0x0010_0000usize;
 
+const SGI_INTID_LO: IntId = IntId::sgi(3);
+const SGI_INTID_HI: IntId = IntId::sgi(4);
+
 /// The entry-point to the Rust application.
 ///
-/// It is called by the start-up code in `cortex-m-rt`.
-#[no_mangle]
-pub extern "C" fn kmain() {
-    main();
-}
-
-/// The main function of our Rust application.
-///
-/// Called by [`kmain`].
+/// It is called by the start-up code in `cortex-r-rt`.
+#[entry]
 fn main() -> ! {
     // Get the GIC address by reading CBAR
     let periphbase = cortex_ar::register::ImpCbar::read().periphbase();
@@ -50,13 +49,17 @@ fn main() -> ! {
     SingleCoreGic::set_priority_mask(0x80);
 
     // Configure a Software Generated Interrupt for Core 0
-    println!("Configure SGI...");
-    let sgi_intid = IntId::sgi(3);
-    gic.set_interrupt_priority(sgi_intid, Some(0), 0x31);
-    gic.set_group(sgi_intid, Some(0), Group::Group1NS);
+    println!("Configure low-prio SGI...");
+    gic.set_interrupt_priority(SGI_INTID_LO, Some(0), 0x31);
+    gic.set_group(SGI_INTID_LO, Some(0), Group::Group1NS);
+
+    println!("Configure high-prio SGI...");
+    gic.set_interrupt_priority(SGI_INTID_HI, Some(0), 0x10);
+    gic.set_group(SGI_INTID_HI, Some(0), Group::Group1NS);
 
     println!("gic.enable_interrupt()");
-    gic.enable_interrupt(sgi_intid, Some(0), true);
+    gic.enable_interrupt(SGI_INTID_LO, Some(0), true);
+    gic.enable_interrupt(SGI_INTID_HI, Some(0), true);
 
     println!("Enabling interrupts...");
     dump_cpsr();
@@ -66,9 +69,9 @@ fn main() -> ! {
     dump_cpsr();
 
     // Send it
-    println!("Send SGI");
+    println!("Send lo-prio SGI");
     SingleCoreGic::send_sgi(
-        sgi_intid,
+        SGI_INTID_LO,
         SgiTarget::List {
             affinity3: 0,
             affinity2: 0,
@@ -81,6 +84,8 @@ fn main() -> ! {
         cortex_ar::asm::nop();
     }
 
+    println!("IRQ test completed OK");
+
     semihosting::process::exit(0);
 }
 
@@ -89,11 +94,33 @@ fn dump_cpsr() {
     println!("CPSR: {:?}", cpsr);
 }
 
-#[no_mangle]
-unsafe extern "C" fn _irq_handler() {
+#[irq]
+fn irq_handler() {
     println!("> IRQ");
     while let Some(int_id) = SingleCoreGic::get_and_acknowledge_interrupt() {
-        println!("- IRQ handle {:?}", int_id);
+        // let's go re-entrant
+        unsafe {
+            cortex_ar::interrupt::enable();
+        }
+        println!("- IRQ Handling {:?}", int_id);
+        if int_id == SGI_INTID_LO {
+            println!(
+                "- IRQ got {:?}, sending hi-prio {:?}",
+                SGI_INTID_LO, SGI_INTID_HI
+            );
+            SingleCoreGic::send_sgi(
+                SGI_INTID_HI,
+                SgiTarget::List {
+                    affinity3: 0,
+                    affinity2: 0,
+                    affinity1: 0,
+                    target_list: 0b1,
+                },
+            );
+            println!("- IRQ finished sending hi-prio!");
+        }
+        // turn interrupts off again
+        cortex_ar::interrupt::disable();
         SingleCoreGic::end_interrupt(int_id);
     }
     println!("< IRQ");

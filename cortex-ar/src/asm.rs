@@ -66,5 +66,5 @@ pub fn core_id() -> u32 {
     unsafe {
         core::arch::asm!("MRC p15, 0, {}, c0, c0, 5", out(reg) r, options(nomem, nostack, preserves_flags));
     }
-    return r & 0x00FF_FFFF;
+    r & 0x00FF_FFFF
 }

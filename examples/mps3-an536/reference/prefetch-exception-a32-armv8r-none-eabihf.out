@@ -1,4 +1,4 @@
-Hello, this is a prefetch exception example
+Hello, this is a prefetch abort exception example
 prefetch abort occurred
 IFSR (Fault Status Register): IFSR { ext=false Domain=0b0010 Status=0b00010 }
 IFSR Status: Ok(DebugEvent)

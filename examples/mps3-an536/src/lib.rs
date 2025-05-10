@@ -2,9 +2,6 @@
 
 #![no_std]
 
-// Need this to bring in the start-up function
-use cortex_r_rt as _;
-
 #[cfg(not(arm_architecture = "v8-r"))]
 compile_error!("This example is only compatible to the ARMv8-R architecture");
 

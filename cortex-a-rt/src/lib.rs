@@ -17,8 +17,8 @@
 //! ## Features
 //!
 //! - `vfp-dp`: Enables support for the double-precision VFP floating point
-//!    support. If your target CPU has this feature or support for NEON which
-//!    also implies double-precision support, this feature should be activated.
+//!   support. If your target CPU has this feature or support for NEON which
+//!   also implies double-precision support, this feature should be activated.
 //! - `eabi-fpu`: Enables the FPU, even if you selected a soft-float ABI target.
 //!
 //! ## Information about the Run-Time
@@ -30,9 +30,11 @@
 //! System mode. If you wish to write a hypervisor, you will need to replace
 //! this library with something more advanced.
 //!
-//! We assume the following global symbols exist:
+//! We assume that a set of symbols exist, either for constants or for C
+//! compatible functions or for naked raw-assembly functions. They are described
+//! in the next three sections.
 //!
-//! ### Constants
+//! ## Constants
 //!
 //! * `_stack_top` - the address of the top of some region of RAM that we can
 //!   use as stack space, with eight-byte alignment. Our linker script PROVIDEs
@@ -74,142 +76,333 @@
 //! +------------------+
 //! ```
 //!
-//! ### C-Compatible Functions
+//! ## C-Compatible Functions
 //!
-//! * `kmain` - the `extern "C"` entry point to your application.
+//! ### Main Function
 //!
-//!   Expected prototype:
+//! The symbol `kmain` should be an `extern "C"` function. It is called in SYS
+//! mode after all the global variables have been initialised. There is no
+//! default - this function is mandatory.
 //!
-//!   ```rust
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn kmain() -> !;
-//!   ```
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! extern "C" fn kmain() -> ! {
+//!     loop { }
+//! }
+//! ```
 //!
-//! * `_svc_handler` - an `extern "C"` function to call when an SVC Exception
-//!   occurs. Our linker script PROVIDEs a default function at
-//!   `_default_handler` but you can override it. Returning from this function
-//!   will cause execution to resume from the function the triggered the
-//!   exception, immediately after the SVC instruction.
+//! You can also create a 'kmain' function by using the `#[entry]` attribute on
+//! a normal Rust function.
 //!
-//!   Expected prototype:
+//! ```rust
+//! use cortex_a_rt::entry;
 //!
-//!   ```rust
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _svc_handler(svc: u32);
-//!   ```
+//! #[entry]
+//! fn my_main() -> ! {
+//!     loop { }
+//! }
+//! ```
 //!
-//! * `_irq_handler` - an `extern "C"` function to call when an Interrupt
-//!   occurs. Our linker script PROVIDEs a default function at
-//!   `_default_handler` but you can override it. Returning from this function
-//!   will cause execution to resume from the function the triggered the
-//!   exception.
+//! ### Undefined Handler
 //!
-//!   Expected prototype:
+//! The symbol `_undefined_handler` should be an `extern "C"` function. It is
+//! called in UND mode when an [Undefined Instruction Exception] occurs.
 //!
-//!   ```rust
-//!   /// Upon return, the interrupt handler will end and execution
-//!   /// will continue at the interrupted instruction.
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _irq_handler();
-//!   ```
+//! [Undefined Instruction Exception]:
+//!     https://developer.arm.com/documentation/ddi0406/c/System-Level-Architecture/The-System-Level-Programmers--Model/Exception-descriptions/Undefined-Instruction-exception?lang=en
 //!
-//! * `_undefined_handler` - an `extern "C"` function to call when an Undefined
-//!   Exception occurs. Our linker script PROVIDEs a default implementation at
-//!   `_default_handler` which is used if `_undefined_handler` is missing.
+//! Our linker script PROVIDEs a default `_undefined_handler` symbol which is an
+//! alias for the `_default_handler` function. You can override it by defining
+//! your own `_undefined_handler` function, like:
 //!
-//!   The expected prototype for `_undefined_handler` is either:
-//!
-//!   ```rust
-//!   /// Does not return
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _undefined_handler(addr: usize) -> !;
-//!   ```
+//! ```rust
+//! /// Does not return
+//! #[unsafe(no_mangle)]
+//! extern "C" fn _undefined_handler(addr: usize) -> ! {
+//!     loop { }
+//! }
+//! ```
 //!   
-//!   or:
+//! or:
 //!
-//!   ```rust
-//!   /// Execution will continue from the returned address.
-//!   ///
-//!   /// Return `addr` to go back and execute the faulting instruction again.
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _undefined_handler(addr: usize) -> usize;
-//!   ```
+//! ```rust
+//! /// Execution will continue from the returned address.
+//! ///
+//! /// Return `addr` to go back and execute the faulting instruction again.
+//! #[unsafe(no_mangle)]
+//! unsafe extern "C" fn _undefined_handler(addr: usize) -> usize {
+//!     // do stuff here, then return to the address *after* the one
+//!     // that failed
+//!     addr + 4
+//! }
+//! ```
 //!
-//! * `_abort_handler` - an `extern "C"` function to call when an Data Abort
-//!   occurs. Our linker script PROVIDEs a default implementation at
-//!   `_default_handler` which is used if `_abort_handler` is missing.
+//! You can create a `_undefined_handler` function by using the
+//! `#[exception(Undefined)]` attribute on a Rust function with the appropriate
+//! arguments and return type.
 //!
-//!   The expected prototype for `_abort_handler` is either:
+//! ```rust
+//! use cortex_a_rt::exception;
 //!
-//!   ```rust
-//!   /// Does not return
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _abort_handler(addr: usize) -> !;
-//!   ```
+//! #[exception(Undefined)]
+//! fn my_handler(addr: usize) -> ! {
+//!     loop { }
+//! }
+//! ```
 //!   
-//!   or:
+//! or:
 //!
-//!   ```rust
-//!   /// Execution will continue from the returned address.
-//!   ///
-//!   /// Return `addr` to go back and execute the faulting instruction again.
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _abort_handler(addr: usize) -> usize;
-//!   ```
+//! ```rust
+//! use cortex_a_rt::exception;
 //!
-//! * `_prefetch_handler` - an `extern "C"` function to call when an Prefetch
-//!   Abort occurs. Our linker script PROVIDEs a default implementation at
-//!   `_default_handler` which is used if `_prefetch_handler` is missing.
+//! #[exception(Undefined)]
+//! unsafe fn my_handler(addr: usize) -> usize {
+//!     // do stuff here, then return the address to return to
+//!     addr + 4
+//! }
+//! ```
 //!
-//!   The expected prototype for `_prefetch_handler` is either:
+//! ### Supervisor Call Handler
 //!
-//!   ```rust
-//!   /// Does not return
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _prefetch_handler(addr: usize) -> !;
-//!   ```
+//! The symbol `_svc_handler` should be an `extern "C"` function. It is called
+//! in SVC mode when a [Supervisor Call Exception] occurs.
+//!
+//! [Supervisor Call Exception]:
+//!     https://developer.arm.com/documentation/ddi0406/c/System-Level-Architecture/The-System-Level-Programmers--Model/Exception-descriptions/Supervisor-Call--SVC--exception?lang=en
+//!
+//! Returning from this function will cause execution to resume at the function
+//! the triggered the exception, immediately after the SVC instruction. You
+//! cannot control where execution resumes. The function is passed the literal
+//! integer argument to the `svc` instruction, which is extracted from the
+//! machine code for you by the default assembly trampoline.
+//!
+//! Our linker script PROVIDEs a default `_svc_handler` symbol which is an alias
+//! for the `_default_handler` function. You can override it by defining your
+//! own `_svc_handler` function, like:
+//!
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! extern "C" fn _svc_handler(svc: u32) {
+//!     // do stuff here
+//! }
+//! ```
+//!
+//! You can also create a `_svc_handler` function by using the
+//! `#[exception(SupervisorCall)]` attribute on a normal Rust function.
+//!
+//! ```rust
+//! use cortex_a_rt::exception;
+//!
+//! #[exception(SupervisorCall)]
+//! fn my_svc_handler(arg: u32) {
+//!     // do stuff here
+//! }
+//! ```
+//!
+//! ### Prefetch Abort Handler
+//!
+//! The symbol `_prefetch_abort_handler` should be an `extern "C"` function. It
+//! is called in ABT mode when a [Prefetch Abort Exception] occurs.
+//!
+//! [Prefetch Abort Exception]:
+//!     https://developer.arm.com/documentation/ddi0406/c/System-Level-Architecture/The-System-Level-Programmers--Model/Exception-descriptions/Prefetch-Abort-exception?lang=en
+//!
+//! Our linker script PROVIDEs a default `_prefetch_abort_handler` symbol which
+//! is an alias for the `_default_handler` function. You can override it by
+//! defining your own `_undefined_handler` function.
+//!
+//! This function takes the address of faulting instruction, and can either not
+//! return:
+//!
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! extern "C" fn _prefetch_abort_handler(addr: usize) -> ! {
+//!     loop { }
+//! }
+//! ```
 //!   
-//!   or:
+//! Or it can return an address where execution should resume after the
+//! Exception handler is complete (which is unsafe):
 //!
-//!   ```rust
-//!   /// Execution will continue from the returned address.
-//!   ///
-//!   /// Return `addr` to go back and execute the faulting instruction again.
-//!   #[unsafe(no_mangle)]
-//!   extern "C" fn _prefetch_handler(addr: usize) -> usize;
-//!   ```
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! unsafe extern "C" fn _prefetch_abort_handler(addr: usize) -> usize {
+//!     // do stuff, then go back to the instruction after the one that failed
+//!     addr + 4
+//! }
+//! ```
 //!
-//! ### ASM functions
+//! You can create a `_prefetch_abort_handler` function by using the
+//! `#[exception(PrefetchAbort)]` macro on a Rust function with the appropriate
+//! arguments and return type.
+//!
+//! ```rust
+//! use cortex_a_rt::exception;
+//!
+//! #[exception(PrefetchAbort)]
+//! fn my_handler(addr: usize) -> ! {
+//!     loop { }
+//! }
+//! ```
+//!
+//! or:
+//!
+//! ```rust
+//! use cortex_a_rt::exception;
+//!
+//! #[exception(PrefetchAbort)]
+//! unsafe fn my_handler(addr: usize) -> usize {
+//!     // do stuff, then go back to the instruction after the one that failed
+//!     addr + 4
+//! }
+//! ```
+//!
+//! ### Data Abort Handler
+//!
+//! The symbol `_data_abort_handler` should be an `extern "C"` function. It is
+//! called in ABT mode when a [Data Abort Exception] occurs.
+//!
+//! [Data Abort Exception]:
+//!     https://developer.arm.com/documentation/ddi0406/c/System-Level-Architecture/The-System-Level-Programmers--Model/Exception-descriptions/Data-Abort-exception?lang=en
+//!
+//! Our linker script PROVIDEs a default `_data_abort_handler` symbol which is
+//! an alias for the `_default_handler` function. You can override it by
+//! defining your own `_undefined_handler` function.
+//!
+//! This function takes the address of faulting instruction, and can either not
+//! return:
+//!
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! extern "C" fn _data_abort_handler(addr: usize) -> ! {
+//!     loop { }
+//! }
+//! ```
+//!   
+//! Or it can return an address where execution should resume after the
+//! Exception handler is complete (which is unsafe):
+//!
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! unsafe extern "C" fn _data_abort_handler(addr: usize) -> usize {
+//!     // do stuff, then go back to the instruction after the one that failed
+//!     addr + 4
+//! }
+//! ```
+//!
+//! You can create a `_data_abort_handler` function by using the
+//! `#[exception(DataAbort)]` macro on a Rust function with the appropriate
+//! arguments and return type.
+//!
+//! ```rust
+//! use cortex_a_rt::exception;
+//!
+//! #[exception(DataAbort)]
+//! fn my_handler(addr: usize) -> ! {
+//!     loop { }
+//! }
+//! ```
+//!
+//! or:
+//!
+//! ```rust
+//! use cortex_a_rt::exception;
+//!
+//! #[exception(DataAbort)]
+//! unsafe fn my_handler(addr: usize) -> usize {
+//!     // do stuff, then go back to the instruction after the one that failed
+//!     addr + 4
+//! }
+//! ```
+//!
+//! ### IRQ Handler
+//!
+//! The symbol `_irq_handler` should be an `extern "C"` function. It is called
+//! in SYS mode (not IRQ mode!) when an [Interrupt] occurs.
+//!
+//! [Interrupt]:
+//!     https://developer.arm.com/documentation/ddi0406/c/System-Level-Architecture/The-System-Level-Programmers--Model/Exception-descriptions/IRQ-exception?lang=en
+//!
+//! Returning from this function will cause execution to resume at wherever it
+//! was interrupted. You cannot control where execution resumes.
+//!
+//! This function is entered with interrupts masked, but you may unmask (i.e.
+//! enable) interrupts inside this function if desired. You will probably want
+//! to talk to your interrupt controller first, otherwise you'll just keep
+//! re-entering this interrupt handler recursively until you stack overflow.
+//!
+//! Our linker script PROVIDEs a default `_irq_handler` symbol which is an alias
+//! for `_default_handler`. You can override it by defining your own
+//! `_irq_handler` function.
+//!
+//! Expected prototype:
+//!
+//! ```rust
+//! #[unsafe(no_mangle)]
+//! extern "C" fn _irq_handler() {
+//!     // 1. Talk to interrupt controller
+//!     // 2. Handle interrupt
+//!     // 3. Clear interrupt
+//! }
+//! ```
+//!
+//! You can also create a `_irq_handler` function by using the `#[irq]`
+//! attribute on a normal Rust function.
+//!
+//! ```rust
+//! use cortex_a_rt::irq;
+//!
+//! #[irq]
+//! fn my_irq_handler() {
+//!     // 1. Talk to interrupt controller
+//!     // 2. Handle interrupt
+//!     // 3. Clear interrupt
+//! }
+//! ```
+//!
+//! ## ASM functions
+//!
+//! These are the naked 'raw' assembly functions the run-time requires:
 //!
 //! * `_start` - a Reset handler. Our linker script PROVIDEs a default function
-//!   at `_default_start` but you can override it. Some SoCs require a chip
-//!   specific startup for tasks like MMU initialization or chip specific
-//!   initialization routines, so if our start-up routine doesn't work for you,
-//!   supply your own `_start` function (but feel free to call our
-//!   `_default_start` as part of it).
+//!   at `_default_start` but you can override it. The provided default start
+//!   function will initialise all global variables and then call `kmain` in SYS
+//!   mode. Some SoCs require a chip specific startup for tasks like MMU
+//!   initialization or chip specific initialization routines, so if our
+//!   start-up routine doesn't work for you, supply your own `_start` function
+//!   (but feel free to call our `_default_start` as part of it).
+//!
 //! * `_asm_undefined_handler` - a naked function to call when an Undefined
 //!   Exception occurs. Our linker script PROVIDEs a default function at
 //!   `_asm_default_undefined_handler` but you can override it. The provided
-//!   default handler will call `_undefined_handler`, saving state as required.
-//! * `_asm_svc_handler` - a naked function to call when an SVC Exception
-//!   occurs. Our linker script PROVIDEs a default function at
+//!   default handler will call `_undefined_handler` in UND mode, saving state
+//!   as required.
+//!
+//! * `_asm_svc_handler` - a naked function to call when an Supervisor Call
+//!   (SVC) Exception occurs. Our linker script PROVIDEs a default function at
 //!   `_asm_default_svc_handler` but you can override it. The provided default
-//!   handler will call `_svc_handler`, saving state as required.
-//! * `_asm_prefetch_handler` - a naked function to call when a Prefetch
+//!   handler will call `_svc_handler` in SVC mode, saving state as required.
+//!
+//! * `_asm_prefetch_abort_handler` - a naked function to call when a Prefetch
+//!   Abort Exception occurs. Our linker script PROVIDEs a default function at
+//!   `_asm_default_prefetch_abort_handler` but you can override it. The
+//!   provided default handler will call `_prefetch_abort_handler`, saving state
+//!   as required. Note that Prefetch Abort Exceptions are handled in Abort Mode
+//!   (ABT), Monitor Mode (MON) or Hyp Mode (HYP), depending on CPU
+//!   configuration.
+//!
+//! * `_asm_data_abort_handler` - a naked function to call when a Data Abort
 //!   Exception occurs. Our linker script PROVIDEs a default function at
-//!   `_asm_default_prefetch_handler` but you can override it. The provided
-//!   default handler will call `_prefetch_handler`, saving state as required.
-//!   Note that Prefetch Exceptions are handled in Abort Mode, Monitor Mode or
-//!   Hyp Mode, depending on CPU configuration. There is no Prefetch Abort mode,
-//!   so there is no Prefetch Abort Mode stack.
-//! * `_asm_abort_handler` - a naked function to call when an Abort Exception
-//!   occurs. Our linker script PROVIDEs a default function at
-//!   `_asm_default_abort_handler` but you can override it. The provided default
-//!   handler will call `_abort_handler`, saving state as required.
+//!   `_asm_default_data_abort_handler` but you can override it. The provided
+//!   default handler will call `_data_abort_handler` in ABT mode, saving state
+//!   as required.
+//!
 //! * `_asm_irq_handler` - a naked function to call when an Undefined Exception
 //!   occurs. Our linker script PROVIDEs a default function at
 //!   `_asm_default_irq_handler` but you can override it. The provided default
-//!   handler will call `_irq_handler`, saving state as required.
+//!   handler will call `_irq_handler` in SYS mode (not IRQ mode), saving state
+//!   as required.
+//!
 //! * `_asm_fiq_handler` - a naked function to call when a Fast Interrupt
 //!   Request (FIQ) occurs. Our linker script PROVIDEs a default function at
 //!   `_asm_default_fiq_handler` but you can override it. The provided default
@@ -226,10 +419,10 @@
 //!   `_undefined_handler`
 //! * `_asm_default_svc_handler` - assembly language trampoline that calls
 //!   `_svc_handler`
-//! * `_asm_default_prefetch_handler` - assembly language trampoline that calls
-//!   `_prefetch_handler`
-//! * `_asm_default_abort_handler` - assembly language trampoline that calls
-//!   `_abort_handler`
+//! * `_asm_default_prefetch_abort_handler` - assembly language trampoline that
+//!   calls `_prefetch_abort_handler`
+//! * `_asm_default_data_abort_handler` - assembly language trampoline that
+//!   calls `_data_abort_handler`
 //! * `_asm_default_irq_handler` - assembly language trampoline that calls
 //!   `_irq_handler`
 //! * `_asm_default_fiq_handler` - an FIQ handler that just spins
@@ -240,7 +433,7 @@
 //! Armv7-M (and other M-Profile) processors. We must therefore save this state
 //! to the stack using assembly language, before transferring to an `extern "C"`
 //! function. We do not change modes before entering that `extern "C"` function
-//! - that's for the handler to deal with as it wishes. Because FIQ is often
+//! \- that's for the handler to deal with as it wishes. Because FIQ is often
 //! performance-sensitive, we don't supply an FIQ trampoline; if you want to use
 //! FIQ, you have to write your own assembly routine, allowing you to preserve
 //! only whatever state is important to you.
@@ -252,10 +445,10 @@
 
 #![no_std]
 
-use cortex_ar::{
-    asm::nop,
-    register::{cpsr::ProcessorMode, Cpsr},
-};
+#[cfg(target_arch = "arm")]
+use cortex_ar::register::{cpsr::ProcessorMode, Cpsr};
+
+pub use cortex_ar_rt_macros::{entry, exception, irq};
 
 /// Our default exception handler.
 ///
@@ -264,23 +457,23 @@ use cortex_ar::{
 #[no_mangle]
 pub extern "C" fn _default_handler() {
     loop {
-        nop();
+        core::hint::spin_loop();
     }
 }
 
 // The Interrupt Vector Table, and some default assembly-language handler.
+#[cfg(target_arch = "arm")]
 core::arch::global_asm!(
     r#"
     .section .vector_table,"ax",%progbits
-
     .global _vector_table
     .type _vector_table, %function
     _vector_table:
         ldr     pc, =_start
         ldr     pc, =_asm_undefined_handler
         ldr     pc, =_asm_svc_handler
-        ldr     pc, =_asm_prefetch_handler
-        ldr     pc, =_asm_abort_handler
+        ldr     pc, =_asm_prefetch_abort_handler
+        ldr     pc, =_asm_data_abort_handler
         nop
         ldr     pc, =_asm_irq_handler
         ldr     pc, =_asm_fiq_handler
@@ -294,7 +487,10 @@ core::arch::global_asm!(
 /// It should match `restore_context!`.
 ///
 /// On entry to this block, we assume that we are in exception context.
-#[cfg(not(any(target_abi = "eabihf", feature = "eabi-fpu")))]
+#[cfg(all(
+    target_arch = "arm",
+    not(any(target_abi = "eabihf", feature = "eabi-fpu"))
+))]
 macro_rules! save_context {
     () => {
         r#"
@@ -314,7 +510,10 @@ macro_rules! save_context {
 /// handler.
 ///
 /// It should match `save_context!`.
-#[cfg(not(any(target_abi = "eabihf", feature = "eabi-fpu")))]
+#[cfg(all(
+    target_arch = "arm",
+    not(any(target_abi = "eabihf", feature = "eabi-fpu"))
+))]
 macro_rules! restore_context {
     () => {
         r#"
@@ -333,6 +532,7 @@ macro_rules! restore_context {
 ///
 /// It should match `restore_context!`.
 #[cfg(all(
+    target_arch = "arm",
     any(target_abi = "eabihf", feature = "eabi-fpu"),
     not(feature = "vfp-dp")
 ))]
@@ -361,6 +561,7 @@ macro_rules! save_context {
 ///
 /// It should match `save_context!`.
 #[cfg(all(
+    target_arch = "arm",
     any(target_abi = "eabihf", feature = "eabi-fpu"),
     not(feature = "vfp-dp")
 ))]
@@ -386,7 +587,11 @@ macro_rules! restore_context {
 /// handler.
 ///
 /// It should match `restore_context!`.
-#[cfg(all(any(target_abi = "eabihf", feature = "eabi-fpu"), feature = "vfp-dp"))]
+#[cfg(all(
+    target_arch = "arm",
+    any(target_abi = "eabihf", feature = "eabi-fpu"),
+    feature = "vfp-dp"
+))]
 macro_rules! save_context {
     () => {
         r#"
@@ -412,7 +617,11 @@ macro_rules! save_context {
 /// handler.
 ///
 /// It should match `save_context!`.
-#[cfg(all(any(target_abi = "eabihf", feature = "eabi-fpu"), feature = "vfp-dp"))]
+#[cfg(all(
+    target_arch = "arm",
+    any(target_abi = "eabihf", feature = "eabi-fpu"),
+    feature = "vfp-dp"
+))]
 macro_rules! restore_context {
     () => {
         r#"
@@ -433,21 +642,22 @@ macro_rules! restore_context {
 }
 
 // Our assembly language exception handlers
+#[cfg(target_arch = "arm")]
 core::arch::global_asm!(
     r#"
-    .section .text._asm_default_undefined_handler
-
+       
     // Called from the vector table when we have an undefined exception.
     // Saves state and calls a C-compatible handler like
     // `extern "C" fn _undefined_handler(addr: usize) -> usize;`
     // or
     // `extern "C" fn _undefined_handler(addr: usize) -> !;`
+    .section .text._asm_default_undefined_handler
     .global _asm_default_undefined_handler
     .type _asm_default_undefined_handler, %function
     _asm_default_undefined_handler:
         // state save from compiled code
-        srsfd   sp!, {und_mode}
-        // to work out what mode we're in, we need R0, so save it
+        srsfd   sp!, #{und_mode}
+        // to work out what mode we're in, we need R0
         push    {{r0}}
         // First adjust LR for two purposes: Passing the faulting instruction to the C handler,
         // and to return to the failing instruction after the C handler returns.
@@ -481,16 +691,16 @@ core::arch::global_asm!(
         rfefd   sp!
     .size _asm_default_undefined_handler, . - _asm_default_undefined_handler
 
-    
+
     .section .text._asm_default_svc_handler
 
     // Called from the vector table when we have an software interrupt.
     // Saves state and calls a C-compatible handler like
-    // `extern "C" fn svc_handler(svc: u32);`
+    // `extern "C" fn _svc_handler(svc: u32);`
     .global _asm_default_svc_handler
     .type _asm_default_svc_handler, %function
     _asm_default_svc_handler:
-        srsfd   sp!, {svc_mode}
+        srsfd   sp!, #{svc_mode}
     "#,
     save_context!(),
     r#"
@@ -509,25 +719,25 @@ core::arch::global_asm!(
     .size _asm_default_svc_handler, . - _asm_default_svc_handler
 
 
-    .section .text._asm_default_abort_handler
+    .section .text._asm_default_data_abort_handler
 
     // Called from the vector table when we have an undefined exception.
     // Saves state and calls a C-compatible handler like
-    // `extern "C" fn _abort_handler(addr: usize);`
-    .global _asm_default_abort_handler
-    .type _asm_default_abort_handler, %function
-    _asm_default_abort_handler:
+    // `extern "C" fn _data_abort_handler(addr: usize);`
+    .global _asm_default_data_abort_handler
+    .type _asm_default_data_abort_handler, %function
+    _asm_default_data_abort_handler:
         // Subtract 8 from the stored LR, see p.1214 of the ARMv7-A architecture manual.
         subs    lr, lr, #8
         // state save from compiled code
-        srsfd   sp!, {abt_mode}
+        srsfd   sp!, #{abt_mode}
     "#,
     save_context!(),
     r#"
         // Pass the faulting instruction address to the handler.
         mov     r0, lr
         // call C handler
-        bl      _abort_handler
+        bl      _data_abort_handler
         // if we get back here, assume they returned a new LR in r0
         mov     lr, r0
     "#,
@@ -537,28 +747,28 @@ core::arch::global_asm!(
         str     lr, [sp]
         // Return from the asm handler
         rfefd   sp!
-    .size _asm_default_abort_handler, . - _asm_default_abort_handler
+    .size _asm_default_data_abort_handler, . - _asm_default_data_abort_handler
 
 
-    .section .text._asm_default_prefetch_handler
+    .section .text._asm_default_prefetch_abort_handler
 
-    // Called from the vector table when we have a prefetch exception.
+    // Called from the vector table when we have a prefetch abort.
     // Saves state and calls a C-compatible handler like
-    // `extern "C" fn _prefetch_handler(addr: usize);`
-    .global _asm_default_prefetch_handler
-    .type _asm_default_prefetch_handler, %function
-    _asm_default_prefetch_handler:
+    // `extern "C" fn _prefetch_abort_handler(addr: usize);`
+    .global _asm_default_prefetch_abort_handler
+    .type _asm_default_prefetch_abort_handler, %function
+    _asm_default_prefetch_abort_handler:
         // Subtract 4 from the stored LR, see p.1212 of the ARMv7-A architecture manual.
         subs    lr, lr, #4
         // state save from compiled code
-        srsfd   sp!, {abt_mode}
+        srsfd   sp!, #{abt_mode}
     "#,
     save_context!(),
     r#"
         // Pass the faulting instruction address to the handler.
         mov     r0, lr
         // call C handler
-        bl      _prefetch_handler
+        bl      _prefetch_abort_handler
         // if we get back here, assume they returned a new LR in r0
         mov     lr, r0
     "#,
@@ -568,27 +778,39 @@ core::arch::global_asm!(
         str     lr, [sp]
         // Return from the asm handler
         rfefd   sp!
-    .size _asm_default_prefetch_handler, . - _asm_default_prefetch_handler
+    .size _asm_default_prefetch_abort_handler, . - _asm_default_prefetch_abort_handler
 
 
     .section .text._asm_default_irq_handler
 
     // Called from the vector table when we have an interrupt.
     // Saves state and calls a C-compatible handler like
-    // `extern "C" fn irq_handler();`
+    // `extern "C" fn _irq_handler();`
     .global _asm_default_irq_handler
     .type _asm_default_irq_handler, %function
     _asm_default_irq_handler:
+        // make sure we jump back to the right place
         sub     lr, lr, 4
-        srsfd   sp!, {irq_mode}
+        // The hardware has copied CPSR to SPSR_irq and LR to LR_irq for us.
+        // Now push SPSR_irq and LR_irq to the SYS stack.
+        srsfd   sp!, #{sys_mode}
+        // switch to system mode
+        cps     #{sys_mode}
+        // we also need to save LR, so we can be re-entrant
+        push    {{lr}}
+        // save state to the system stack (adjusting SP for alignment)
     "#,
-    save_context!(),
+        save_context!(),
     r#"
         // call C handler
         bl      _irq_handler
+        // restore from the system stack
     "#,
-    restore_context!(),
+        restore_context!(),
     r#"
+        // restore LR
+        pop     {{lr}}
+        // pop CPSR and LR from the stack (which also restores the mode)
         rfefd   sp!
     .size _asm_default_irq_handler, . - _asm_default_irq_handler
 
@@ -603,9 +825,9 @@ core::arch::global_asm!(
     .size    _asm_default_fiq_handler, . - _asm_default_fiq_handler
     "#,
     svc_mode = const ProcessorMode::Svc as u8,
-    irq_mode = const ProcessorMode::Irq as u8,
     und_mode = const ProcessorMode::Und as u8,
     abt_mode = const ProcessorMode::Abt as u8,
+    sys_mode = const ProcessorMode::Sys as u8,
     t_bit = const {
         Cpsr::new_with_raw_value(0)
             .with_t(true)
@@ -614,7 +836,7 @@ core::arch::global_asm!(
 );
 
 /// This macro expands to code to turn on the FPU
-#[cfg(any(target_abi = "eabihf", feature = "eabi-fpu"))]
+#[cfg(all(target_arch = "arm", any(target_abi = "eabihf", feature = "eabi-fpu")))]
 macro_rules! fpu_enable {
     () => {
         r#"
@@ -630,7 +852,10 @@ macro_rules! fpu_enable {
 }
 
 /// This macro expands to code that does nothing because there is no FPU
-#[cfg(not(any(target_abi = "eabihf", feature = "eabi-fpu")))]
+#[cfg(all(
+    target_arch = "arm",
+    not(any(target_abi = "eabihf", feature = "eabi-fpu"))
+))]
 macro_rules! fpu_enable {
     () => {
         r#"
@@ -642,6 +867,7 @@ macro_rules! fpu_enable {
 // Default start-up code for Armv7-A
 //
 // We set up our stacks and `kmain` in system mode.
+#[cfg(target_arch = "arm")]
 core::arch::global_asm!(
     r#"
     .section .text.default_start

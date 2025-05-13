@@ -4,22 +4,18 @@
 #![no_main]
 
 // pull in our start-up code
+use cortex_r_rt::entry;
+
+// pull in our library
 use mps3_an536 as _;
 
 use semihosting::println;
 
 /// The entry-point to the Rust application.
 ///
-/// It is called by the start-up code in `cortex-m-rt`.
-#[no_mangle]
-pub extern "C" fn kmain() {
-    main();
-}
-
-/// The entry-point to the Rust application.
-///
-/// Called by [`kmain`].
-pub fn main() -> ! {
+/// It is called by the start-up code in `cortex-r-rt`.
+#[entry]
+fn main() -> ! {
     chip_info();
     #[cfg(arm_architecture = "v7-r")]
     mpu_pmsa_v7();

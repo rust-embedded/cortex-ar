@@ -4,21 +4,18 @@
 #![no_main]
 
 // pull in our start-up code
+use cortex_r_rt::entry;
+
+// pull in our library
 use mps3_an536 as _;
 
 use semihosting::println;
 
 /// The entry-point to the Rust application.
 ///
-/// It is called by the start-up code in `cortex-m-rt`.
-#[no_mangle]
-pub extern "C" fn kmain() {
-    main();
-    semihosting::process::exit(0);
-}
-
-/// Let's test some timers!
-fn main() {
+/// It is called by the start-up code in `cortex-r-rt`.
+#[entry]
+fn main() -> ! {
     use cortex_ar::generic_timer::{El1PhysicalTimer, El1VirtualTimer, GenericTimer};
     let cntfrq = cortex_ar::register::Cntfrq::read().0;
     println!("cntfrq = {:.03} MHz", cntfrq as f32 / 1_000_000.0);
@@ -59,4 +56,6 @@ fn main() {
         }
         println!("{} countdown hit zero!", name,);
     }
+
+    semihosting::process::exit(0);
 }

@@ -4,7 +4,9 @@
 
 mod critical_section;
 
+#[cfg(target_arch = "arm")]
 pub mod asm;
+
 pub mod interrupt;
 pub mod mmu;
 pub mod register;
@@ -20,7 +22,7 @@ pub mod pmsav8;
 
 /// Generate an SVC call with the given argument.
 ///
-/// Safe to call even in Supervisor (Svc) mode, as long as your Svc handler
+/// Safe to call even in Supervisor (SupervisorCall) mode, as long as your Svc handler
 /// saves and restores SPSR_svc correctly.
 #[macro_export]
 macro_rules! svc {

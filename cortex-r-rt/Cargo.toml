@@ -26,6 +26,7 @@ version = "0.1.0"
 [dependencies]
 cortex-ar = {version = "0.1.0", path = "../cortex-ar"}
 semihosting = {version = "0.1.18", features = ["stdio"]}
+cortex-ar-rt-macros = { path = "../cortex-ar-rt-macros", version = "=0.1.0" }
 
 [features]
 # Enable the FPU on start-up, even on a soft-float EABI target

@@ -1,11 +1,12 @@
-# Run-time support for Arm Cortex-R (AArch32)
+# Macros for `cortex-a-rt` and `cortex-r-rt`
 
-This library implements a simple Arm vector table, suitable for getting into a
-Rust application running in System Mode. It also provides a reference start
-up method. Most Cortex-R based systems will require chip specific start-up
-code, so the start-up method can over overriden.
+This crate contains proc-macros that are re-exported through the following crates:
 
-See <https://docs.rs/cortex-r-rt> for detailed documentation.
+* [`cortex-a-rt`]
+* [`cortex-r-rt`]
+
+[cortex-a-rt]: https://crates.io/crates/cortex-a-rt
+[cortex-r-rt]: https://crates.io/crates/cortex-r-rt
 
 ## Minimum Supported Rust Version (MSRV)
 

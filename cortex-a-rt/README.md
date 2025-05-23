@@ -1,4 +1,11 @@
-# Arm Cortex-A Run-Time
+# Run-time support for Arm Cortex-A (AArch32)
+
+This library implements a simple Arm vector table, suitable for getting into a
+Rust application running in System Mode. It also provides a reference start
+up method. Most Cortex-A based systems will require chip specific start-up
+code, so the start-up method can over overriden.
+
+See <https://docs.rs/cortex-a-rt> for detailed documentation.
 
 ## Features
 
@@ -8,8 +15,12 @@
 
 ## Minimum Supported Rust Version (MSRV)
 
-This crate is guaranteed to compile on stable Rust 1.82.0 and up. It *might*
-compile with older versions but that may change in any new patch release.
+This crate is guaranteed to compile on stable Rust 1.82.0 and up, as recorded
+by the `package.rust-version` property in `Cargo.toml`.
+
+Increasing the MSRV is not considered a breaking change and may occur in a
+minor version release (e.g. from `0.3.0` to `0.3.1`, because this is still a
+`0.x` release).
 
 ## Licence
 

@@ -9,6 +9,7 @@ pub mod asm;
 
 pub mod interrupt;
 pub mod mmu;
+pub mod cache;
 pub mod register;
 
 #[cfg(any(test, arm_architecture = "v7-r"))]

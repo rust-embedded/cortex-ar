@@ -19,7 +19,8 @@ version = "0.0.0"
 cortex-ar = { path = "../../cortex-ar", features = ["critical-section-multi-core"] }
 cortex-r-rt = { path = "../../cortex-r-rt" }
 semihosting = { version = "0.1.18", features = ["stdio"] }
-arm-gic = { version = "0.7.0", optional = true }
+# arm-gic = { version = "0.7.0", optional = true }
+arm-gic = { git = "https://review.trustedfirmware.org/arm-firmware-crates/arm-gic", rev = "refs/changes/22/43322/1", optional = true }
 critical-section = "1.2.0"
 heapless = "0.9.1"
 

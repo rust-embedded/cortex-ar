@@ -12,10 +12,7 @@ use cortex_r_rt::{entry, irq};
 use mps3_an536::InterruptHandler;
 
 use arm_gic::{
-    gicv3::{
-        registers::{Gicd, GicrSgi},
-        GicCpuInterface, GicV3, Group, InterruptGroup, SgiTarget, SgiTargetGroup,
-    },
+    gicv3::{GicCpuInterface, GicV3, Group, InterruptGroup, SgiTarget, SgiTargetGroup},
     IntId, UniqueMmioPointer,
 };
 use core::{cell::RefCell, ptr::NonNull};
@@ -51,8 +48,8 @@ fn main() -> ! {
         gicd_base, gicr_base
     );
 
-    let gicd = unsafe { UniqueMmioPointer::new(NonNull::new(gicd_base as *mut Gicd).unwrap()) };
-    let gicr = NonNull::new(gicr_base as *mut GicrSgi).unwrap();
+    let gicd = unsafe { UniqueMmioPointer::new(NonNull::new(gicd_base.cast()).unwrap()) };
+    let gicr = NonNull::new(gicr_base.cast()).unwrap();
     let mut gic = unsafe { GicV3::new(gicd, gicr, 1, false) };
 
     println!("Calling git.setup(0)");
